@@ -1,0 +1,280 @@
+// ============================================================
+// MASTER CONFIGURATION
+// ============================================================
+const SCRIPT_PROP = PropertiesService.getScriptProperties();
+
+const SHEET_ID = "1HBsxZ0FVa2ZQrukcuHWAMgWiTMdJQ2vxCukCnm2eR7g"; 
+
+const SHEET_DATA = "Bonagiri Family Database"; 
+const SHEET_PENDING = "Pending_Updates"; 
+const SHEET_CREDENTIALS = "Credentials";     
+const SHEET_EVENTS = "Family_Events"; // Will be created automatically
+
+const ADMIN_PASSWORD = "bonagiri_admin"; 
+
+// ============================================================
+// API ENTRY POINT
+// ============================================================
+function doPost(e) {
+  return handleRequest(e);
+}
+
+function handleRequest(e) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(10000); 
+
+  try {
+    const params = JSON.parse(e.postData.contents);
+    const action = params.action;
+    const ss = SpreadsheetApp.openById(SHEET_ID); 
+
+    // --------------------------------------------------------
+    // ACTION 1: LOGIN & FETCH PROFILE
+    // --------------------------------------------------------
+    if (action === "login") {
+      const credSheet = ss.getSheetByName(SHEET_CREDENTIALS);
+      if (!credSheet) return jsonResponse({ success: false, message: `Error: Tab '${SHEET_CREDENTIALS}' missing.` });
+      
+      const credData = credSheet.getDataRange().getValues();
+      if (credData.length > 0) credData.shift(); 
+
+      const inputId = String(params.id).trim();
+      const inputPass = String(params.password).trim();
+
+      const userCreds = credData.find(r => String(r[0]).trim() === inputId);
+      if (!userCreds) return jsonResponse({ success: false, message: `User ID '${inputId}' not found.` });
+      if (String(userCreds[1]).trim() !== inputPass) return jsonResponse({ success: false, message: "Incorrect Password." });
+
+      const detailSheet = ss.getSheetByName(SHEET_DATA);
+      const detailData = detailSheet.getDataRange().getValues();
+      if (detailData.length > 0) detailData.shift();
+
+      const userRow = detailData.find(r => String(r[1]).trim() === inputId); 
+
+      if (!userRow) return jsonResponse({ success: false, message: `Profile not found for ID '${inputId}'.` });
+
+      return jsonResponse({
+          success: true,
+          user: {
+              id: inputId,
+              name: userRow[0] || "", location: userRow[2] || "", occupation: userRow[3] || "",
+              dob: formatDate(userRow[4]), dod: formatDate(userRow[5]),
+              bio: userRow[6] || "", photo: userRow[7] || ""
+          }
+      });
+    }
+
+    // --------------------------------------------------------
+    // ACTION 2: GET FAMILY DIRECTORY (For Invites)
+    // --------------------------------------------------------
+    else if (action === "get_family_directory") {
+      const detailSheet = ss.getSheetByName(SHEET_DATA);
+      if (!detailSheet) return jsonResponse({ success: false, message: "Database sheet missing" });
+
+      const data = detailSheet.getDataRange().getValues();
+      if (data.length > 0) data.shift(); 
+
+      // Map: Name (Col A), ID (Col B)
+      const directory = data.map(r => ({
+        name: String(r[0]),
+        id: String(r[1])
+      })).filter(u => u.id && u.name); 
+
+      return jsonResponse({ success: true, directory: directory });
+    }
+
+    // --------------------------------------------------------
+    // ACTION 3: CREATE EVENT (Auto-creates Sheet)
+    // --------------------------------------------------------
+    else if (action === "create_event") {
+      let eventSheet = ss.getSheetByName(SHEET_EVENTS);
+      if (!eventSheet) {
+        // Auto-create the Events sheet if it doesn't exist
+        eventSheet = ss.insertSheet(SHEET_EVENTS);
+        eventSheet.appendRow(["EventID", "CreatorID", "Title", "Description", "Date", "Time", "Location", "GuestsJSON"]);
+      }
+
+      const eventId = Utilities.getUuid();
+      const guestMap = {};
+      
+      // Convert list of invited IDs to map with status 'pending'
+      if (params.guests && Array.isArray(params.guests)) {
+        params.guests.forEach(gid => guestMap[String(gid).trim()] = "pending");
+      }
+
+      eventSheet.appendRow([
+        eventId,
+        String(params.creatorId),
+        params.title,
+        params.description,
+        params.date,
+        params.time,
+        params.location,
+        JSON.stringify(guestMap)
+      ]);
+
+      return jsonResponse({ success: true, message: "Event Created" });
+    }
+
+    // --------------------------------------------------------
+    // ACTION 4: GET EVENTS (Hosting & Invited)
+    // --------------------------------------------------------
+    else if (action === "get_events") {
+      let eventSheet = ss.getSheetByName(SHEET_EVENTS);
+      if (!eventSheet) return jsonResponse({ success: true, hosting: [], invited: [] }); 
+
+      const data = eventSheet.getDataRange().getValues();
+      if (data.length > 0) data.shift();
+
+      // Load Creator Names
+      const detailSheet = ss.getSheetByName(SHEET_DATA);
+      const nameMap = {};
+      if (detailSheet) {
+        const details = detailSheet.getDataRange().getValues();
+        if (details.length > 0) details.shift();
+        details.forEach(row => {
+            const fid = String(row[1]).trim();
+            nameMap[fid] = row[0]; 
+        });
+      }
+
+      const myId = String(params.userId).trim();
+      const hosting = [];
+      const invited = [];
+
+      data.forEach(r => {
+        const creatorId = String(r[1]).trim();
+        const creatorName = nameMap[creatorId] || "Family Member"; 
+
+        let guests = {};
+        try { guests = JSON.parse(r[7]); } catch(e) {}
+
+        const eventObj = {
+          eventId: r[0], 
+          creatorId: creatorId, 
+          creatorName: creatorName, 
+          title: r[2], 
+          desc: r[3],
+          date: formatDate(r[4]), 
+          time: formatDate(r[5], true), 
+          location: r[6],
+          myStatus: guests[myId] || "none",
+          guestCount: Object.keys(guests).length
+        };
+
+        if (creatorId === myId) {
+          hosting.push(eventObj);
+        } else if (guests.hasOwnProperty(myId)) {
+          invited.push(eventObj);
+        }
+      });
+
+      return jsonResponse({ success: true, hosting: hosting, invited: invited });
+    }
+
+    // --------------------------------------------------------
+    // ACTION 5: RSVP
+    // --------------------------------------------------------
+    else if (action === "rsvp_event") {
+      const eventSheet = ss.getSheetByName(SHEET_EVENTS);
+      const data = eventSheet.getDataRange().getValues();
+      
+      let rowIndex = -1;
+      let guests = {};
+      
+      for(let i=1; i<data.length; i++) {
+        if (data[i][0] === params.eventId) {
+          rowIndex = i;
+          try { guests = JSON.parse(data[i][7]); } catch(e) {}
+          break;
+        }
+      }
+
+      if (rowIndex === -1) return jsonResponse({ success: false, message: "Event not found" });
+
+      guests[String(params.userId).trim()] = params.status;
+      eventSheet.getRange(rowIndex + 1, 8).setValue(JSON.stringify(guests));
+
+      return jsonResponse({ success: true });
+    }
+
+    // --------------------------------------------------------
+    // EXISTING ADMIN ACTIONS
+    // --------------------------------------------------------
+    else if (action === "update") {
+      const pendingSheet = ss.getSheetByName(SHEET_PENDING);
+      const reqId = Utilities.getUuid();
+      const timestamp = new Date().toISOString();
+      pendingSheet.appendRow([reqId, params.id, params.name, params.location, params.occupation, params.bio, params.photoData || "", timestamp, params.dob || "", params.dod || ""]);
+      return jsonResponse({ success: true, message: "Sent to Admin" });
+    }
+    else if (action === "admin_login") {
+      return jsonResponse({ success: params.password === ADMIN_PASSWORD });
+    }
+    else if (action === "get_pending_requests") {
+       if (params.password !== ADMIN_PASSWORD) return jsonResponse({ success: false });
+       const sheet = ss.getSheetByName(SHEET_PENDING);
+       const data = sheet.getDataRange().getValues();
+       if (data.length > 0) data.shift(); 
+       const requests = data.map(r => ({ reqId: r[0], userId: r[1], name: r[2], location: r[3], occupation: r[4], bio: r[5], photoData: r[6], timestamp: r[7], dob: formatDate(r[8]), dod: formatDate(r[9]) }));
+       return jsonResponse({ success: true, requests: requests });
+    }
+    else if (action === "approve_request") {
+       if (params.password !== ADMIN_PASSWORD) return jsonResponse({ success: false });
+       const pendingSheet = ss.getSheetByName(SHEET_PENDING);
+       const data = pendingSheet.getDataRange().getValues();
+       let rowIndex = -1;
+       for(let i=1; i<data.length; i++) { if(data[i][0] === params.reqId) { rowIndex = i; break; } }
+       if (rowIndex === -1) return jsonResponse({ success: false });
+       
+       const reqData = data[rowIndex];
+       const userId = String(reqData[1]);
+       const mainSheet = ss.getSheetByName(SHEET_DATA);
+       const mainData = mainSheet.getDataRange().getValues();
+       const mainRowIndex = mainData.findIndex(r => String(r[1]) === userId);
+       
+       if (mainRowIndex > -1) {
+           const r = mainRowIndex + 1;
+           mainSheet.getRange(r, 1).setValue(reqData[2]); mainSheet.getRange(r, 3).setValue(reqData[3]); mainSheet.getRange(r, 4).setValue(reqData[4]); 
+           mainSheet.getRange(r, 5).setValue(reqData[8]); mainSheet.getRange(r, 6).setValue(reqData[9]); 
+           mainSheet.getRange(r, 7).setValue(reqData[5]); if (reqData[6]) mainSheet.getRange(r, 8).setValue(reqData[6]); 
+       } else {
+           mainSheet.appendRow([reqData[2], userId, reqData[3], reqData[4], reqData[8], reqData[9], reqData[5], reqData[6]]);
+       }
+       pendingSheet.deleteRow(rowIndex + 1); 
+       return jsonResponse({ success: true });
+    }
+    else if (action === "reject_request") {
+       if (params.password !== ADMIN_PASSWORD) return jsonResponse({ success: false });
+       const pendingSheet = ss.getSheetByName(SHEET_PENDING);
+       const data = pendingSheet.getDataRange().getValues();
+       let rowIndex = -1;
+       for(let i=1; i<data.length; i++) { if(data[i][0] === params.reqId) { rowIndex = i; break; } }
+       if (rowIndex > -1) pendingSheet.deleteRow(rowIndex + 1);
+       return jsonResponse({ success: true });
+    }
+
+    return jsonResponse({ success: false, message: "Unknown Action" });
+
+  } catch (e) {
+    return jsonResponse({ success: false, message: "System Error: " + e.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function formatDate(dateVal, isTime) {
+  if (!dateVal) return "";
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return dateVal;
+    if (isTime) return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    return d.toISOString().split('T')[0];
+  } catch(e) { return dateVal; }
+}
+
+function jsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) { return jsonResponse({ status: "active" }); }

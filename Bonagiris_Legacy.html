@@ -1,0 +1,660 @@
+<html lang="en"><head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Bonagiri's Legacy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    },
+                    colors: {
+                        dark: {
+                            bg: '#000000',
+                            card: '#121212',
+                            panel: '#1A1A1A',
+                            border: '#2A2A2A',
+                            text: '#E5E7EB',
+                            muted: '#9CA3AF',
+                            accent: '#6366F1'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000000; color: #E5E7EB; }
+        #viewport { width: 100%; height: 100%; cursor: grab; position: relative; overflow: hidden; background-color: #000000; }
+        #viewport:active { cursor: grabbing; }
+        #canvas { transform-origin: 0 0; position: absolute; top: 0; left: 0; will-change: transform; }
+        .node-card { transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.2s ease, border-color 0.2s; }
+        .node-card:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(99, 102, 241, 0.3); border-color: #6366F1; z-index: 50; }
+        .half-card-hover:hover { background-color: rgba(255, 255, 255, 0.05); }
+        #connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+        path.connector { fill: none; stroke: #4B5563; stroke-width: 3px; transition: stroke 0.3s; shape-rendering: geometricPrecision; }
+        #detail-view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #000000; z-index: 100; display: none; opacity: 0; transition: opacity 0.4s ease; overflow-y: auto; }
+        #detail-view.active { display: flex; opacity: 1; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .loader { border: 4px solid #333; border-top: 4px solid #6366F1; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Search Scrollbar */
+        #search-results::-webkit-scrollbar { width: 6px; }
+        #search-results::-webkit-scrollbar-track { background: #1A1A1A; }
+        #search-results::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <!-- ================= UI HEADER ================= -->
+    <div class="fixed top-0 left-0 w-full z-50 pointer-events-none transition-opacity duration-300" id="tree-ui" style="opacity: 1;">
+        <div class="bg-black/80 backdrop-blur-md border-b border-gray-800 px-6 py-4 flex flex-col md:flex-row justify-between items-center pointer-events-auto shadow-md gap-4 md:gap-0">
+            
+            <!-- LEFT: Title & Search -->
+            <div class="flex flex-col md:flex-row items-center gap-6 w-full md:w-auto">
+                <div>
+                    <h1 class="text-2xl font-serif text-white font-bold flex items-center gap-2">
+                        <span class="material-symbols-outlined text-indigo-500 text-3xl">diversity_2</span>
+                        Bonagiri's Legacy
+                    </h1>
+                    <div class="flex items-center gap-2">
+                        <p class="text-xs text-gray-500" id="status-text">Initializing...</p>
+                        <div id="sync-loader" class="loader" style="width: 12px; height: 12px; border-width: 2px;"></div>
+                        <div class="text-xs text-gray-600 border-l border-gray-700 pl-2 ml-2" id="stats-display">Loaded: 0</div>
+                    </div>
+                </div>
+
+                <!-- SEARCH BAR -->
+                <div class="relative w-full md:w-72 group">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <span class="material-symbols-outlined text-gray-500 text-lg group-focus-within:text-indigo-400 transition-colors">search</span>
+                    </span>
+                    <input type="text" id="search-bar" placeholder="Find family member..." 
+                        class="w-full bg-gray-900/50 border border-gray-700 text-gray-200 text-sm rounded-full focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 block pl-10 pr-4 py-2 outline-none transition-all placeholder-gray-600 focus:bg-gray-900"
+                        autocomplete="off">
+                    
+                    <!-- Search Results Dropdown -->
+                    <div id="search-results" class="absolute top-full left-0 w-full bg-[#121212] border border-gray-700 rounded-lg mt-2 shadow-2xl hidden max-h-80 overflow-y-auto z-[60]">
+                        <!-- Results injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Buttons -->
+            <div class="flex gap-3">
+                <a href="Admin_Portal.html" class="flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 text-sm font-medium rounded-md transition shadow-lg border border-gray-700 pointer-events-auto hover:text-white no-underline">
+                    <span class="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                    Admin
+                </a>
+                <a href="User_Portal.html" class="flex items-center gap-2 px-4 py-2 bg-indigo-900 hover:bg-indigo-800 text-white text-sm font-medium rounded-md transition shadow-lg border border-indigo-700 pointer-events-auto no-underline">
+                    <span class="material-symbols-outlined text-[18px]">account_circle</span>
+                    Profile
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ZOOM CONTROLS ================= -->
+    <div class="fixed bottom-8 right-8 z-50 flex flex-col gap-2 bg-[#121212] rounded-lg shadow-lg shadow-black/50 p-2 border border-gray-800 transition-opacity duration-300" id="tree-controls" style="opacity: 1;">
+        <button class="p-2 rounded hover:bg-gray-800 text-gray-300 hover:text-indigo-400 transition" onclick="zoomButton(1.3)">
+            <span class="material-symbols-outlined">add</span>
+        </button>
+        <button class="p-2 rounded hover:bg-gray-800 text-gray-300 hover:text-indigo-400 transition" onclick="zoomButton(1/1.3)">
+            <span class="material-symbols-outlined">remove</span>
+        </button>
+    </div>
+
+    <!-- ================= MAIN CANVAS ================= -->
+    <div id="viewport" style="cursor: grab;">
+        <div id="canvas" style="transform-origin: 0 0;">
+            <svg id="connections"></svg>
+            <div id="nodes"></div>
+        </div>
+    </div>
+
+    <!-- ================= DETAIL SIDEBAR ================= -->
+    <div class="flex flex-col md:flex-row" id="detail-view" style="opacity: 0;">
+        <button class="fixed top-6 left-6 z-50 bg-black/50 backdrop-blur-md text-white p-3 rounded-full hover:bg-white hover:text-black transition duration-300 border border-white/20 group flex items-center gap-2 pr-5" onclick="closeDetailView()">
+            <span class="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
+            <span class="font-medium text-sm">Back to Tree</span>
+        </button>
+        <div class="w-full md:w-1/2 h-[50vh] md:h-full relative bg-gray-900 border-b md:border-b-0 md:border-r border-gray-800">
+            <img alt="Profile" class="w-full h-full object-cover" id="detail-photo" src="">
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
+            <div class="absolute bottom-8 left-8 right-8">
+                <div class="inline-block px-3 py-1 bg-indigo-600 text-white text-xs font-bold uppercase tracking-widest rounded-sm mb-3" id="detail-generation-badge">Generation 3</div>
+                <h1 class="text-4xl md:text-6xl font-serif font-bold text-white shadow-black drop-shadow-lg leading-tight" id="detail-name-overlay">Name</h1>
+            </div>
+        </div>
+        <div class="w-full md:w-1/2 h-auto md:h-full bg-[#050505] overflow-y-auto scrollbar-hide">
+            <div class="p-8 md:p-16 max-w-2xl mx-auto">
+                <div class="grid grid-cols-2 gap-6 mb-8 border-b border-gray-800 pb-8">
+                    <div>
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-1">Gender</span>
+                        <span class="text-xl font-serif text-white" id="detail-gender">Female</span>
+                    </div>
+                    <div>
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-1">Location</span>
+                        <span class="text-xl font-serif text-white" id="detail-location">Unknown</span>
+                    </div>
+                    <div>
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-1">Occupation</span>
+                        <span class="text-xl font-serif text-white" id="detail-occupation">Unknown</span>
+                    </div>
+                    <div class="col-span-1">
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-1">ID</span>
+                        <span class="text-sm font-serif text-gray-400" id="detail-uid">000</span>
+                    </div>
+                </div>
+
+                <!-- NEW: Dates Section -->
+                <div class="grid grid-cols-2 gap-6 mb-12 border-b border-gray-800 pb-8">
+                    <div>
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-1">Date of Birth</span>
+                        <span class="text-lg font-serif text-indigo-300" id="detail-dob">-</span>
+                    </div>
+                    <div>
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-1">Date of Death</span>
+                        <span class="text-lg font-serif text-gray-400" id="detail-dod">-</span>
+                    </div>
+                </div>
+
+                <div class="mb-12">
+                    <h2 class="text-2xl font-serif font-bold text-indigo-400 mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined">history_edu</span> Biography
+                    </h2>
+                    <p class="text-gray-400 leading-relaxed text-lg font-light" id="detail-bio">No specific details available.</p>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-serif font-bold text-indigo-400 mb-6 flex items-center gap-2">
+                        <span class="material-symbols-outlined">family_history</span> Family Connections
+                    </h2>
+                    <div class="mb-6" id="spouse-section" style="display: block;">
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-3">Spouse</span>
+                        <div id="detail-spouse-badge"></div>
+                    </div>
+                    <div>
+                        <span class="block text-xs text-gray-500 uppercase tracking-widest mb-3">Children</span>
+                        <div class="space-y-3" id="detail-children"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const GOOGLE_SHEET_STRUCTURE_URL = "https://docs.google.com/spreadsheets/d/1HBsxZ0FVa2ZQrukcuHWAMgWiTMdJQ2vxCukCnm2eR7g/edit?gid=844895973#gid=844895973"; 
+        const GOOGLE_SHEET_DETAILS_URL = "https://docs.google.com/spreadsheets/d/1HBsxZ0FVa2ZQrukcuHWAMgWiTMdJQ2vxCukCnm2eR7g/edit?gid=1636204888#gid=1636204888";   
+
+        const CONFIG = { NODE_WIDTH: 280, NODE_HEIGHT: 320, SIBLING_SPACING: 40, GENERATION_HEIGHT: 380, MAX_NODES: 2000 };
+        const PLACEHOLDER_MALE = "https://ui-avatars.com/api/?background=1A1A1A&color=6366F1&bold=true&name=";
+        const PLACEHOLDER_FEMALE = "https://ui-avatars.com/api/?background=1A1A1A&color=DB2777&bold=true&name=";
+
+        const DEFAULT_STRUCTURE_DB = `1|Arthur Harrington|Male|2|3,4||1|||Patriarch\n2|Victoria Harrington|Female|1|3,4||1|||Matriarch`;
+        const DEFAULT_DETAILS_DB = `Arthur Harrington|1|London, UK|Shipping Magnate|1890-01-01||Founder of the Harrington Line.|`;
+
+        const peopleMap = new Map(), familyNodesMap = new Map(), detailsMap = new Map();
+        let globalRoots = [];
+        let treeBounds = { width: 0, height: 0 }; 
+        const state = { current: { x: 0, y: 0, scale: 0.5 }, target: { x: 0, y: 0, scale: 0.5 }, isDragging: false, lastMouse: { x: 0, y: 0 } };
+
+        function initDatabases() {
+            if (!GOOGLE_SHEET_STRUCTURE_URL && !GOOGLE_SHEET_DETAILS_URL) {
+                document.getElementById('status-text').textContent = "Local Mode";
+                processDetailsDB(DEFAULT_DETAILS_DB);
+                processStructureDB(DEFAULT_STRUCTURE_DB);
+                return;
+            }
+            document.getElementById('status-text').textContent = "Connecting...";
+            // Structure DB (Logic unchanged)
+            loadGoogleSheetJSONP(GOOGLE_SHEET_STRUCTURE_URL, 'handleStructureResponse', 10);
+            // Details DB (Updated to fetch 8 columns)
+            loadGoogleSheetJSONP(GOOGLE_SHEET_DETAILS_URL, 'handleDetailsResponse', 8);
+        }
+
+        function loadGoogleSheetJSONP(url, callbackName, colsToFetch) {
+            if (!url) return;
+            const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+            const gidMatch = url.match(/[?&#]gid=([0-9]+)/);
+            if (!match) return;
+
+            const sheetId = match[1];
+            const gid = gidMatch ? gidMatch[1] : '0';
+            
+            // Create a global function pointer if needed, but we used standard window names
+            const script = document.createElement('script');
+            // We can't control columns via TQ url easily without select, but fetching all is standard.
+            // We handle column counting in the response handler.
+            script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=responseHandler:${callbackName}&gid=${gid}&headers=0`;
+            script.onerror = () => {
+                console.error(`Failed to load script for ${callbackName}`);
+                document.getElementById('status-text').textContent = "Connection Failed";
+                document.getElementById('status-text').className = "text-sm text-red-400";
+            };
+            document.body.appendChild(script);
+        }
+
+        // Updated for 8 Columns: Name(0), ID(1), Loc(2), Occ(3), DOB(4), DOD(5), Bio(6), Photo(7)
+        window.handleDetailsResponse = function(json) {
+            if (!json || !json.table || !json.table.rows) return;
+            let csv = "";
+            json.table.rows.forEach(r => {
+                const rowData = [];
+                for(let i=0; i<8; i++) { // Fetch up to 8 columns
+                    const cell = r.c[i];
+                    // Clean values: handle null, numbers, replace pipes to prevent breaking CSV logic
+                    let val = (cell && cell.v !== null) ? String(cell.v).replace(/\|/g, ",") : "";
+                    if(cell && cell.f) val = cell.f; // Use formatted value (useful for dates) if available
+                    rowData.push(val);
+                }
+                csv += rowData.join("|") + "\n";
+            });
+            processDetailsDB(csv);
+        };
+
+        window.handleStructureResponse = function(json) {
+            if (!json || !json.table || !json.table.rows) return;
+            let csv = "";
+            json.table.rows.forEach(r => {
+                const rowData = [];
+                for(let i=0; i<10; i++) {
+                    const cell = r.c[i];
+                    let val = (cell && cell.v !== null) ? String(cell.v).replace(/\|/g, ",") : "";
+                    rowData.push(val);
+                }
+                csv += rowData.join("|") + "\n";
+            });
+            processStructureDB(csv);
+            
+            document.getElementById('status-text').textContent = "Live Data Synced";
+            document.getElementById('status-text').className = "text-sm text-green-400 font-bold";
+            document.getElementById('sync-loader').style.display = 'none';
+        };
+
+        function cleanID(id) {
+            if(!id) return null;
+            return String(id).trim().replace(/\.0$/, ''); 
+        }
+
+        function processDetailsDB(csv) {
+            detailsMap.clear();
+            const lines = csv.split('\n').filter(l => l.trim() !== '');
+            const delimiter = (lines[0] && lines[0].match(/\|/g)||[]).length > 1 ? '|' : ',';
+            lines.forEach(line => {
+                const cols = line.split(delimiter).map(c => c.trim().replace(/^"|"$/g, '')); 
+                if(cols.length < 2) return;
+                
+                // MAPPING: 0=Name, 1=ID, 2=Loc, 3=Occ, 4=DOB, 5=DOD, 6=Bio, 7=Photo
+                const id = cleanID(cols[1]); // Use ID from Column Index 1
+                if(!id) return;
+                
+                detailsMap.set(id, { 
+                    name: cols[0] || "Unknown",
+                    location: cols[2] || "Unknown", 
+                    occupation: cols[3] || "Unknown", 
+                    dob: cols[4] || "-",
+                    dod: cols[5] || "-",
+                    bio: cols[6] || "No biography available.",
+                    photo: cols[7] || "" 
+                });
+            });
+        }
+
+        function getPhotoFor(id, name, gender) {
+            const details = detailsMap.get(cleanID(id));
+            if (details && details.photo && details.photo.length > 5) return details.photo;
+            const baseUrl = (gender||'').toLowerCase() === 'female' ? PLACEHOLDER_FEMALE : PLACEHOLDER_MALE;
+            return baseUrl + encodeURIComponent(name);
+        }
+
+        function processStructureDB(csv) {
+            peopleMap.clear(); familyNodesMap.clear();
+            document.getElementById('nodes').innerHTML = ''; document.getElementById('connections').innerHTML = '';
+            
+            const lines = csv.split('\n').filter(l => l.trim() !== '');
+            const delimiter = (lines[0] && lines[0].match(/\|/g)||[]).length > 1 ? '|' : ',';
+            const start = (lines[0].toLowerCase().includes("name")) ? 1 : 0;
+
+            for(let i=start; i<lines.length; i++) {
+                let cols = [];
+                if (delimiter === ',') {
+                     cols = (lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || []).map(m => m.replace(/^"|"$/g, '').replace(/""/g, '"'));
+                } else {
+                     cols = lines[i].split(delimiter).map(c => c.trim());
+                }
+                if(cols.length < 2) continue;
+                const uid = cleanID(cols[0]); // Structure DB ID is still Col 0
+                if(!uid) continue;
+
+                const p = { 
+                    id: uid, 
+                    name: cols[1], 
+                    gender: cols[2]||'Male', 
+                    spouseId: cleanID(cols[3]), 
+                    childrenIds: cols[4]||"", 
+                    generation: parseInt(cols[6])||0, 
+                    fatherId: cleanID(cols[7]), 
+                    motherId: cleanID(cols[8]), 
+                    notes: cols[9]||"", 
+                    // Use details map for photo, fallback to placeholder
+                    photo: getPhotoFor(uid, cols[1], cols[2]), 
+                    spouseRef: null 
+                };
+                peopleMap.set(uid, p);
+            }
+
+            // Link logic remains the same
+            peopleMap.forEach(p => { if(p.spouseId && peopleMap.has(p.spouseId)) p.spouseRef = peopleMap.get(p.spouseId); });
+            const processed = new Set();
+            peopleMap.forEach(p => {
+                if(processed.has(p.id)) return;
+                const node = { id: `node-${p.id}`, primary: p, spouse: null, children: [], generation: p.generation, x:0, y:0, width:0 };
+                processed.add(p.id);
+                if(p.spouseRef && !processed.has(p.spouseRef.id)) { node.spouse = p.spouseRef; processed.add(p.spouseRef.id); }
+                familyNodesMap.set(node.id, node);
+            });
+
+            // Rebuild tree structure
+            const roots = [];
+            familyNodesMap.forEach(node => {
+                let pid1 = node.primary.fatherId;
+                let pid2 = node.primary.motherId;
+                let parent = null;
+                if(pid1 || pid2) { 
+                    for(let [k,v] of familyNodesMap) { 
+                        const vId = v.primary.id;
+                        const spId = v.spouse ? v.spouse.id : null;
+                        if ( (pid1 && (vId === pid1 || spId === pid1)) || (pid2 && (vId === pid2 || spId === pid2)) ) {
+                            parent = v; break; 
+                        } 
+                    } 
+                }
+                if(parent) parent.children.push(node); else roots.push(node);
+            });
+
+            globalRoots = roots;
+            document.getElementById('stats-display').textContent = `Loaded: ${peopleMap.size} | Roots: ${roots.length}`;
+
+            if(roots.length > 0) {
+                roots.sort((a,b) => countDescendants(b) - countDescendants(a));
+                let currentX = 0;
+                let maxGen = 0;
+
+                roots.forEach(root => {
+                    function fixGen(n,g) { n.generation=g; n.y=g*CONFIG.GENERATION_HEIGHT+50; n.children.forEach(c=>fixGen(c,g+1)); }
+                    fixGen(root, root.primary.generation || 0);
+                    calculateLayout(root);
+                    assignCoords(root, currentX); 
+                    currentX += root.width + 300; 
+                    const treeMaxGen = (function mg(n){return n.children.length?Math.max(...n.children.map(mg)):n.generation})(root);
+                    if(treeMaxGen > maxGen) maxGen = treeMaxGen;
+                    renderTree(root);
+                });
+
+                treeBounds.width = currentX;
+                treeBounds.height = (maxGen + 2) * CONFIG.GENERATION_HEIGHT;
+                document.getElementById('canvas').style.width = `${Math.max(5000, currentX + 1000)}px`;
+                document.getElementById('canvas').style.height = `${(maxGen+2)*CONFIG.GENERATION_HEIGHT}px`;
+                resetView();
+            }
+        }
+
+        function countDescendants(node) {
+            let count = 1;
+            node.children.forEach(c => count += countDescendants(c));
+            return count;
+        }
+
+        function calculateLayout(node) {
+            if(!node.children.length) { node.width = CONFIG.NODE_WIDTH; return; }
+            let w = 0;
+            node.children.forEach((c,i) => { calculateLayout(c); w += c.width + (i<node.children.length-1 ? CONFIG.SIBLING_SPACING : 0); });
+            node.width = Math.max(CONFIG.NODE_WIDTH, w);
+            assignCoords(node, 0);
+        }
+
+        function assignCoords(node, xOffset) {
+            node.x = xOffset + (node.width/2) - (CONFIG.NODE_WIDTH/2);
+            let cx = (node.x + CONFIG.NODE_WIDTH/2) - (node.children.reduce((a,c)=>a+c.width,0) + (node.children.length-1)*CONFIG.SIBLING_SPACING)/2;
+            node.children.forEach(c => { assignCoords(c, cx); cx += c.width + CONFIG.SIBLING_SPACING; });
+        }
+
+        function renderTree(node) {
+            const el = document.createElement('div');
+            el.className = 'node-card absolute bg-[#121212] rounded-lg border border-gray-800 flex flex-col overflow-hidden z-10 shadow-lg';
+            el.style.width = `${CONFIG.NODE_WIDTH}px`; el.style.height = `${CONFIG.NODE_HEIGHT}px`;
+            el.style.left = `${node.x}px`; el.style.top = `${node.y}px`;
+            
+            if (node.spouse) {
+                el.innerHTML = `<div class="flex h-full w-full"><div class="w-1/2 h-full border-r border-gray-800 flex flex-col group relative cursor-pointer half-card-hover" onclick="event.stopPropagation(); openDetailView('${node.id}', 'primary')"><div class="h-1/2 w-full relative overflow-hidden bg-gray-900"><img src="${node.primary.photo}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div><div class="h-1/2 w-full p-2 pt-4 flex flex-col items-center text-center"><span class="text-[9px] font-bold text-indigo-400 uppercase mb-1">Heir</span><h3 class="font-serif font-bold text-gray-200 text-sm mb-2 line-clamp-2">${node.primary.name}</h3><span class="text-[10px] text-gray-500">${node.primary.gender}</span></div></div><div class="w-1/2 h-full flex flex-col group relative cursor-pointer half-card-hover" onclick="event.stopPropagation(); openDetailView('${node.id}', 'spouse')"><div class="h-1/2 w-full relative overflow-hidden bg-gray-900"><img src="${node.spouse.photo}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div><div class="h-1/2 w-full p-2 pt-4 flex flex-col items-center text-center"><span class="text-[9px] font-bold text-pink-400 uppercase mb-1">Spouse</span><h3 class="font-serif font-bold text-gray-200 text-sm mb-2 line-clamp-2">${node.spouse.name}</h3><span class="text-[10px] text-gray-500">${node.spouse.gender}</span></div></div></div>`;
+            } else {
+                el.innerHTML = `<div class="flex h-full w-full" onclick="event.stopPropagation(); openDetailView('${node.id}', 'primary')"><div class="w-full h-full flex flex-col group relative cursor-pointer half-card-hover"><div class="h-1/2 w-full relative overflow-hidden bg-gray-900"><img src="${node.primary.photo}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div><div class="h-1/2 w-full p-4 flex flex-col justify-center items-center text-center"><span class="text-[9px] font-bold text-indigo-400 uppercase mb-1">Heir</span><h3 class="font-serif font-bold text-gray-200 text-lg mb-2 line-clamp-2">${node.primary.name}</h3><span class="text-xs text-gray-500">${node.primary.gender}</span></div></div></div>`;
+            }
+            el.innerHTML += `<div class="absolute top-[48%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-[#121212] border border-gray-700 rounded-full px-2 py-0.5 z-20"><span class="text-[9px] text-gray-400 font-bold">Gen ${node.generation + 1}</span></div>`;
+            document.getElementById('nodes').appendChild(el);
+
+            if(node.children.length) {
+                const px = node.x + CONFIG.NODE_WIDTH/2; const py = node.y + CONFIG.NODE_HEIGHT; const my = py + (CONFIG.GENERATION_HEIGHT - CONFIG.NODE_HEIGHT)/2;
+                node.children.forEach(c => {
+                    const cx = c.x + CONFIG.NODE_WIDTH/2; const cy = c.y;
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    path.setAttribute("d", `M ${px} ${py} V ${my} H ${cx} V ${cy}`);
+                    path.setAttribute("class", "connector");
+                    document.getElementById('connections').appendChild(path);
+                    renderTree(c);
+                });
+            }
+        }
+
+        function openDetailView(nodeId, type) {
+            const famNode = familyNodesMap.get(nodeId); if(!famNode) return;
+            const person = type === 'primary' ? famNode.primary : famNode.spouse; if(!person) return;
+            const details = detailsMap.get(person.id) || { location: "Unknown", occupation: "Unknown", bio: "No specific details available.", photo: "", dob: "-", dod: "-" };
+
+            document.getElementById('detail-photo').src = person.photo;
+            document.getElementById('detail-name-overlay').textContent = person.name;
+            document.getElementById('detail-generation-badge').textContent = `Generation ${famNode.generation + 1}`;
+            document.getElementById('detail-gender').textContent = person.gender;
+            document.getElementById('detail-uid').textContent = person.id;
+            
+            // Populating from Details Map
+            document.getElementById('detail-location').textContent = details.location;
+            document.getElementById('detail-occupation').textContent = details.occupation;
+            document.getElementById('detail-bio').textContent = details.bio;
+            document.getElementById('detail-dob').textContent = details.dob;
+            document.getElementById('detail-dod').textContent = details.dod;
+
+            const spEl = document.getElementById('detail-spouse-badge'); spEl.innerHTML = '';
+            if(person.spouseRef) {
+                document.getElementById('spouse-section').style.display = 'block';
+                const d = document.createElement('div');
+                d.className = 'flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-lg p-2 pr-4 cursor-pointer hover:bg-gray-800 transition border-l-4 border-l-pink-500';
+                d.innerHTML = `<img src="${person.spouseRef.photo}" class="w-10 h-10 rounded-full object-cover"><div><div class="text-xs text-gray-500 uppercase">Spouse</div><div class="text-sm font-bold text-gray-200">${person.spouseRef.name}</div></div>`;
+                d.onclick = () => openDetailView(nodeId, type === 'primary' ? 'spouse' : 'primary');
+                spEl.appendChild(d);
+            } else { document.getElementById('spouse-section').style.display = 'none'; }
+
+            const chEl = document.getElementById('detail-children'); chEl.innerHTML = '';
+            if(famNode.children.length) {
+                famNode.children.forEach(c => {
+                    const child = c.primary;
+                    const d = document.createElement('div');
+                    d.className = 'flex items-center justify-between bg-[#0F0F0F] border border-gray-800 rounded-lg p-3 hover:border-indigo-500/50 cursor-pointer transition';
+                    d.innerHTML = `<div class="flex items-center gap-3"><img src="${child.photo}" class="w-12 h-12 rounded-full object-cover border border-gray-700"><div><div class="font-serif font-bold text-gray-200">${child.name}</div><div class="text-xs text-gray-500">ID: ${child.id}</div></div></div><span class="material-symbols-outlined text-gray-600">arrow_forward</span>`;
+                    d.onclick = () => openDetailView(c.id, 'primary');
+                    chEl.appendChild(d);
+                });
+            } else { chEl.innerHTML = '<div class="p-4 border border-dashed border-gray-800 rounded-lg text-gray-600 text-center text-sm">No children</div>'; }
+
+            const dv = document.getElementById('detail-view'); dv.classList.add('active');
+            requestAnimationFrame(() => dv.style.opacity = '1');
+            document.getElementById('tree-ui').style.opacity = '0';
+            document.getElementById('tree-controls').style.opacity = '0';
+        }
+
+        function closeDetailView() {
+            const dv = document.getElementById('detail-view'); dv.style.opacity = '0';
+            setTimeout(() => { dv.classList.remove('active'); document.getElementById('tree-ui').style.opacity = '1'; document.getElementById('tree-controls').style.opacity = '1'; }, 400);
+        }
+
+        function animate() {
+            const factor = 0.08; 
+            const dX = state.target.x - state.current.x;
+            const dY = state.target.y - state.current.y;
+            const dS = state.target.scale - state.current.scale;
+            if(Math.abs(dX)>0.01 || Math.abs(dY)>0.01 || Math.abs(dS)>0.0001) { 
+                state.current.x += dX * factor; 
+                state.current.y += dY * factor; 
+                state.current.scale += dS * factor; 
+                document.getElementById('canvas').style.transform = `translate(${state.current.x}px,${state.current.y}px) scale(${state.current.scale})`; 
+            }
+            requestAnimationFrame(animate);
+        }
+        animate();
+        
+        document.getElementById('viewport').addEventListener('mousedown', e => { e.preventDefault(); state.isDragging=true; state.lastMouse={x:e.clientX,y:e.clientY}; document.getElementById('viewport').style.cursor='grabbing'; });
+        window.addEventListener('mouseup', () => { state.isDragging=false; document.getElementById('viewport').style.cursor='grab'; });
+        window.addEventListener('mousemove', e => { if(!state.isDragging)return; e.preventDefault(); state.target.x+=e.clientX-state.lastMouse.x; state.target.y+=e.clientY-state.lastMouse.y; state.lastMouse={x:e.clientX,y:e.clientY}; });
+        document.getElementById('viewport').addEventListener('wheel', e => { 
+            e.preventDefault(); 
+            let delta = -e.deltaY;
+            if (e.deltaMode === 1) delta *= 40; 
+            if (e.deltaMode === 2) delta *= 800; 
+            const zoomFactor = Math.exp(delta * 0.0015); 
+            const s = Math.max(0.01, Math.min(state.target.scale * zoomFactor, 5)); 
+            const r = document.getElementById('viewport').getBoundingClientRect(); 
+            const mx = e.clientX - r.left; 
+            const my = e.clientY - r.top; 
+            const wx = (mx - state.target.x) / state.target.scale; 
+            const wy = (my - state.target.y) / state.target.scale; 
+            state.target.scale = s; 
+            state.target.x = mx - wx * s; 
+            state.target.y = my - wy * s; 
+        }, { passive: false });
+
+        function zoomButton(f) { 
+            const s = Math.max(0.01, Math.min(state.target.scale * f, 5)); 
+            const r = document.getElementById('viewport').getBoundingClientRect(); 
+            const cx = r.width/2; 
+            const cy = r.height/2; 
+            const wx = (cx - state.target.x) / state.target.scale; 
+            const wy = (cy - state.target.y) / state.target.scale; 
+            state.target.scale = s; 
+            state.target.x = cx - wx * s; 
+            state.target.y = cy - wy * s; 
+        }
+        
+        function resetView() { 
+            if(globalRoots.length === 0) return;
+            const viewport = document.getElementById('viewport');
+            const vw = viewport.clientWidth;
+            const vh = viewport.clientHeight;
+            
+            // Calculate scale to fit width
+            const scaleX = (vw * 0.9) / treeBounds.width;
+            const scaleY = (vh * 0.9) / treeBounds.height;
+            const fitScale = Math.min(scaleX, scaleY, 1);
+            
+            state.target.scale = Math.max(0.05, fitScale);
+            
+            // Center content horizontally
+            const contentCenterX = treeBounds.width / 2;
+            state.target.x = (vw / 2) - (contentCenterX * state.target.scale);
+            
+            // Start near top
+            state.target.y = 50; 
+            
+            // Snap instantly
+            state.current.x = state.target.x;
+            state.current.y = state.target.y;
+            state.current.scale = state.target.scale;
+        }
+
+        // ======================= SEARCH LOGIC =======================
+        const searchInput = document.getElementById('search-bar');
+        const searchResults = document.getElementById('search-results');
+
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            searchResults.innerHTML = '';
+            if (query.length < 2) {
+                searchResults.classList.add('hidden');
+                return;
+            }
+
+            const matches = Array.from(peopleMap.values()).filter(p => p.name.toLowerCase().includes(query));
+            if (matches.length === 0) {
+                searchResults.innerHTML = `<div class="p-3 text-xs text-gray-500 text-center">No matches found</div>`;
+                searchResults.classList.remove('hidden');
+                return;
+            }
+
+            searchResults.classList.remove('hidden');
+            matches.slice(0, 8).forEach(p => {
+                const el = document.createElement('div');
+                el.className = 'p-3 hover:bg-gray-800 cursor-pointer flex items-center gap-3 border-b border-gray-800 last:border-0 transition-colors';
+                el.innerHTML = `
+                    <img src="${p.photo}" class="w-8 h-8 rounded-full object-cover bg-gray-900 border border-gray-700">
+                    <div>
+                        <div class="text-sm font-bold text-gray-200">${p.name}</div>
+                        <div class="text-[10px] text-gray-500 flex items-center gap-2">
+                            <span>ID: ${p.id}</span>
+                            <span class="w-1 h-1 rounded-full bg-gray-600"></span>
+                            <span>${p.gender}</span>
+                        </div>
+                    </div>
+                `;
+                el.onclick = () => {
+                    focusOnPerson(p.id);
+                    searchResults.classList.add('hidden');
+                    searchInput.value = '';
+                };
+                searchResults.appendChild(el);
+            });
+        });
+
+        // Hide search results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.classList.add('hidden');
+            }
+        });
+
+        function focusOnPerson(personId) {
+            // Find which Node card contains this person (either as Primary or Spouse)
+            let targetNode = null;
+            for (let [nodeId, node] of familyNodesMap) {
+                if (node.primary.id === personId || (node.spouse && node.spouse.id === personId)) {
+                    targetNode = node;
+                    break;
+                }
+            }
+
+            if (targetNode) {
+                const zoomScale = 1.5;
+                const viewport = document.getElementById('viewport');
+                const vw = viewport.clientWidth;
+                const vh = viewport.clientHeight;
+
+                // Center of the target node relative to global tree coordinates
+                const nodeCenterX = targetNode.x + CONFIG.NODE_WIDTH / 2;
+                const nodeCenterY = targetNode.y + CONFIG.NODE_HEIGHT / 2;
+
+                // Set target state to center this node
+                state.target.scale = zoomScale;
+                state.target.x = (vw / 2) - (nodeCenterX * zoomScale);
+                state.target.y = (vh / 2) - (nodeCenterY * zoomScale);
+            } else {
+                alert("Person found in database but not placed on the visual tree (orphaned data).");
+            }
+        }
+
+        initDatabases();
+    </script>
+</body>
+</html>

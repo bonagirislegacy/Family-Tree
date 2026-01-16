@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonagiri's Legacy - Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'] },
+                    colors: { dark: { bg: '#000000', card: '#121212', accent: '#6366F1' } }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-gray-200 h-screen overflow-hidden flex flex-col font-sans">
+
+    <!-- Navbar -->
+    <nav class="border-b border-gray-800 bg-[#050505] px-6 py-4 flex justify-between items-center z-50">
+        <h1 class="text-xl font-serif font-bold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-red-500">admin_panel_settings</span>
+            Admin Console
+        </h1>
+        <div class="flex items-center gap-4">
+            <a href="Bonagiris_Legacy.html" target="_blank" class="text-sm text-gray-400 hover:text-white transition flex items-center gap-1">
+                View Tree <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+            </a>
+            <div class="h-4 w-px bg-gray-800 mx-2"></div>
+            <button onclick="logout()" id="logout-btn" class="hidden text-red-400 hover:text-red-300 text-sm">Logout</button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="flex-1 relative flex justify-center items-center p-4">
+        
+        <!-- Login Form -->
+        <div id="admin-login-container" class="w-full max-w-sm bg-[#121212] border border-gray-800 p-8 rounded-xl shadow-2xl relative z-10">
+            <h2 class="text-2xl font-serif text-white mb-2 text-center">Admin Access</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-500 uppercase tracking-widest mb-1">Admin Password</label>
+                    <input type="password" id="admin-pass" class="w-full bg-[#0A0A0A] border border-gray-700 rounded p-3 text-white focus:border-red-500 outline-none">
+                </div>
+                <button onclick="handleAdminLogin()" id="login-btn" class="w-full bg-red-900 hover:bg-red-800 text-white font-medium py-3 rounded transition flex justify-center items-center">
+                    <span>Access Dashboard</span>
+                </button>
+                <p id="login-msg" class="text-center text-sm text-red-400 mt-2 h-5"></p>
+            </div>
+            <div class="mt-6 pt-6 border-t border-gray-800 text-center">
+                 <p class="text-[10px] text-gray-600">Default: <span class="font-mono text-gray-500">bonagiri_admin</span></p>
+            </div>
+        </div>
+
+        <!-- Dashboard (Hidden initially) -->
+        <div id="dashboard-container" class="hidden w-full max-w-5xl h-[85vh] flex gap-6">
+            
+            <!-- Left: Request List -->
+            <div class="w-1/3 bg-[#121212] border border-gray-800 rounded-xl flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-gray-800 bg-[#1A1A1A] flex justify-between items-center">
+                    <h3 class="font-bold text-gray-300">Pending Requests</h3>
+                    <button onclick="refreshRequests()" class="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-white transition">Refresh</button>
+                </div>
+                <div id="request-list" class="flex-1 overflow-y-auto p-2 space-y-2">
+                    <div class="text-center text-gray-600 mt-10 text-sm">Loading requests...</div>
+                </div>
+            </div>
+
+            <!-- Right: Details & Action -->
+            <div class="w-2/3 bg-[#121212] border border-gray-800 rounded-xl flex flex-col relative overflow-hidden">
+                <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-gray-600">
+                    <span class="material-symbols-outlined text-4xl mb-2 opacity-50">pending_actions</span>
+                    <p>Select a request to review</p>
+                </div>
+
+                <div id="review-panel" class="hidden h-full flex flex-col">
+                    <!-- Header -->
+                    <div class="p-6 border-b border-gray-800 flex justify-between items-start bg-[#1A1A1A]">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="material-symbols-outlined text-indigo-400">person</span>
+                                <h2 class="text-xl font-serif text-white" id="req-name">User Name</h2>
+                            </div>
+                            <p class="text-xs text-gray-500 font-mono" id="req-id">ID: 000</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] text-gray-500 uppercase tracking-widest block">Requested</span>
+                            <span class="text-sm text-gray-300" id="req-date">...</span>
+                        </div>
+                    </div>
+
+                    <!-- Changes Comparison -->
+                    <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                        
+                        <!-- Photo Check -->
+                        <div id="photo-change-section" class="hidden">
+                            <h4 class="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-4">Profile Photo Update</h4>
+                            <div class="flex items-center gap-8 bg-black/30 p-4 rounded-lg border border-gray-800">
+                                <div class="text-center">
+                                    <p class="text-[10px] text-gray-500 mb-2">NEW PHOTO</p>
+                                    <img id="req-photo-new" src="" class="w-24 h-24 rounded-full object-cover border-2 border-green-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Text Fields -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="group">
+                                <label class="block text-xs text-gray-500 uppercase mb-1">Location</label>
+                                <div class="bg-[#0A0A0A] border border-gray-700 p-3 rounded text-green-400 font-medium" id="req-loc"></div>
+                            </div>
+                            <div class="group">
+                                <label class="block text-xs text-gray-500 uppercase mb-1">Occupation</label>
+                                <div class="bg-[#0A0A0A] border border-gray-700 p-3 rounded text-green-400 font-medium" id="req-occ"></div>
+                            </div>
+                            <div class="group">
+                                <label class="block text-xs text-gray-500 uppercase mb-1">Date of Birth</label>
+                                <div class="bg-[#0A0A0A] border border-gray-700 p-3 rounded text-green-400 font-medium" id="req-dob"></div>
+                            </div>
+                            <div class="group">
+                                <label class="block text-xs text-gray-500 uppercase mb-1">Date of Death</label>
+                                <div class="bg-[#0A0A0A] border border-gray-700 p-3 rounded text-green-400 font-medium" id="req-dod"></div>
+                            </div>
+                        </div>
+                        <div class="group">
+                             <label class="block text-xs text-gray-500 uppercase mb-1">Biography</label>
+                             <div class="bg-[#0A0A0A] border border-gray-700 p-3 rounded text-green-400 text-sm leading-relaxed" id="req-bio"></div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="p-6 border-t border-gray-800 bg-[#1A1A1A] flex gap-4">
+                        <button onclick="processRequest('reject')" class="flex-1 bg-red-900/50 hover:bg-red-900 border border-red-800 text-red-200 py-3 rounded-lg font-medium transition flex justify-center items-center gap-2">
+                            <span class="material-symbols-outlined">close</span> Reject
+                        </button>
+                        <button onclick="processRequest('approve')" class="flex-1 bg-green-900/50 hover:bg-green-900 border border-green-800 text-green-200 py-3 rounded-lg font-medium transition flex justify-center items-center gap-2">
+                            <span class="material-symbols-outlined">check</span> Approve & Publish
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-xl transform translate-y-20 transition-transform duration-300 flex items-center gap-3 border border-gray-700">
+        <span id="toast-icon" class="material-symbols-outlined text-green-400">check_circle</span>
+        <span id="toast-msg">Action Completed</span>
+    </div>
+
+    <script>
+        // ======================================================
+        // PASTE YOUR NEW GOOGLE APPS SCRIPT WEB APP URL HERE
+        // ======================================================
+        const API_URL = "https://script.google.com/macros/s/AKfycbxvg_WIWee5_bz2Ox_XcRuRyGJ_ntnX7WFe9AckY7UImy75w6VvPEzr_PEEIGCtC3Mf7Q/exec";
+        // ======================================================
+
+        let adminToken = null;
+        let currentRequests = [];
+        let selectedRequest = null;
+
+        async function callScript(data) {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(data),
+                redirect: "follow"
+            });
+            return await response.json();
+        }
+
+        function handleAdminLogin() {
+            const pass = document.getElementById('admin-pass').value.trim();
+            const btn = document.getElementById('login-btn');
+            const msg = document.getElementById('login-msg');
+
+            if(!pass) return;
+            btn.innerHTML = `Verifying...`; btn.disabled = true;
+
+            callScript({ action: "admin_login", password: pass })
+            .then(data => {
+                if(data.success) {
+                    adminToken = pass;
+                    document.getElementById('admin-login-container').classList.add('hidden');
+                    document.getElementById('dashboard-container').classList.remove('hidden');
+                    document.getElementById('dashboard-container').classList.add('flex');
+                    document.getElementById('logout-btn').classList.remove('hidden');
+                    refreshRequests();
+                } else {
+                    msg.textContent = "Access Denied.";
+                    btn.innerHTML = "Access Dashboard"; btn.disabled = false;
+                }
+            })
+            .catch(err => {
+                msg.textContent = "Connection Error.";
+                btn.innerHTML = "Access Dashboard"; btn.disabled = false;
+            });
+        }
+
+        function refreshRequests() {
+            const list = document.getElementById('request-list');
+            list.innerHTML = `<div class="flex justify-center p-4"><div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div></div>`;
+
+            callScript({ action: "get_pending_requests", password: adminToken })
+            .then(data => {
+                currentRequests = data.requests || [];
+                renderList();
+            })
+            .catch(err => { list.innerHTML = `<div class="text-center text-red-400 mt-10 text-xs">Failed to load.</div>`; });
+        }
+
+        function renderList() {
+            const list = document.getElementById('request-list');
+            list.innerHTML = "";
+            if(currentRequests.length === 0) {
+                list.innerHTML = `<div class="text-center text-gray-500 mt-10 text-sm">No pending requests.<br>All clear!</div>`;
+                return;
+            }
+            currentRequests.forEach(req => {
+                const item = document.createElement('div');
+                item.className = `p-3 rounded-lg cursor-pointer border border-transparent hover:bg-gray-800 transition mb-2 ${selectedRequest && selectedRequest.reqId === req.reqId ? 'bg-gray-800 border-gray-700' : 'bg-[#0A0A0A]'}`;
+                item.onclick = () => selectRequest(req);
+                item.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="font-bold text-gray-200 text-sm">${req.name}</span>
+                        <span class="text-[10px] text-gray-500 bg-gray-900 px-1.5 py-0.5 rounded">${req.timestamp.split('T')[0]}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 font-mono">ID: ${req.userId}</div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function selectRequest(req) {
+            selectedRequest = req;
+            renderList();
+
+            document.getElementById('empty-state').classList.add('hidden');
+            const panel = document.getElementById('review-panel');
+            panel.classList.remove('hidden');
+
+            document.getElementById('req-name').textContent = req.name;
+            document.getElementById('req-id').textContent = `Family ID: ${req.userId}`;
+            document.getElementById('req-date').textContent = new Date(req.timestamp).toLocaleString();
+
+            document.getElementById('req-loc').textContent = req.location || "No change";
+            document.getElementById('req-occ').textContent = req.occupation || "No change";
+            document.getElementById('req-bio').textContent = req.bio || "No change";
+            document.getElementById('req-dob').textContent = req.dob || "No change";
+            document.getElementById('req-dod').textContent = req.dod || "None";
+
+            const photoSec = document.getElementById('photo-change-section');
+            if(req.photoData) {
+                photoSec.classList.remove('hidden');
+                document.getElementById('req-photo-new').src = req.photoData;
+            } else { photoSec.classList.add('hidden'); }
+        }
+
+        function processRequest(decision) {
+            if(!selectedRequest) return;
+            showToast(`Processing ${decision}...`, 'pending');
+            callScript({ 
+                action: decision === 'approve' ? "approve_request" : "reject_request",
+                password: adminToken,
+                reqId: selectedRequest.reqId
+            })
+            .then(data => {
+                if(data.success) {
+                    showToast(`Request ${decision}d successfully!`, 'success');
+                    selectedRequest = null;
+                    document.getElementById('review-panel').classList.add('hidden');
+                    document.getElementById('empty-state').classList.remove('hidden');
+                    refreshRequests();
+                } else { showToast(`Error: ${data.message}`, 'error'); }
+            })
+            .catch(err => { showToast("Connection failed", 'error'); });
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const txt = document.getElementById('toast-msg');
+            txt.textContent = msg;
+            toast.classList.remove('translate-y-20');
+            if(type === 'success') icon.className = "material-symbols-outlined text-green-400";
+            else if(type === 'error') icon.className = "material-symbols-outlined text-red-400";
+            else icon.className = "material-symbols-outlined text-yellow-400 animate-spin";
+            if(type !== 'pending') { setTimeout(() => { toast.classList.add('translate-y-20'); }, 3000); }
+        }
+
+        function logout() { adminToken = null; location.reload(); }
+    </script>
+</body>
+</html>
